@@ -22,7 +22,7 @@ try {
 HTML;
     exit(1);
 }
-
+<p> waseem </p>
 $bootstrap = Bootstrap::create(BP, $_SERVER);
 /** @var \Magento\Framework\App\Http $app */
 $app = $bootstrap->createApplication(\Magento\Framework\App\Http::class);

@@ -1,69 +1,37 @@
-# Workflow that manages the CI process for the main branch and corresponding Salesforce environment called "UAT" in this example
-name: CI Main
-# When the Workflow should run
+name: Build
+
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
-    paths:
-      - "force-app/**"
-# Jobs to be executed
+  pull_request:
+    types: [opened, synchronize, reopened]
+
 jobs:
-  deploy-source:
+  sonarcloud:
+    name: SonarCloud
     runs-on: ubuntu-latest
-    # Restrict job to access only secrets and protection settings scoped in the Develop environment
-    environment: UAT
+
     steps:
-      # Checkout the source code
-      - name: "Checkout source code"
-        uses: actions/checkout@v2
-      # Install Salesforce CLI
-      - name: "Install Salesforce CLI"
-        run: |
-          wget https://developer.salesforce.com/media/salesforce-cli/sfdx/channels/stable/sfdx-linux-x64.tar.xz
-          mkdir ~/sfdx
-          tar xJf sfdx-linux-x64.tar.xz -C ~/sfdx --strip-components 1
-          echo "$HOME/sfdx/bin" >> $GITHUB_PATH
-          ~/sfdx/bin/sfdx version
-      # Store secret for develop sandbox
-      - name: "Populate auth file with SDFX_AUTH_URL secret"
-        shell: bash
-        run: "echo ${{ secrets.SFDX_AUTH_URL}} > ./ENV_SFDX_URL.txt"
-      # Authenticate environment in order to deploy
-      - name: "Authenticate Environment"
-        run: sfdx auth:sfdxurl:store -f ./ENV_SFDX_URL.txt -a uat-environment
-      # Convert source to metadata format
-      - name: "Convert Source Code to Metadata Format"
-        run: sfdx force:source:convert -d mdapioutput
-      # Deploy to target environment
-      - name: "Deploy to Environment"
-        run: sfdx force:mdapi:deploy -d mdapioutput/ -u uat-environment -w 100
-      # Get Apex test results
-      - name: "Run Apex tests"
-        run: "sfdx force:apex:test:run -c -r json -d ./tests/apex -u uat-environment -w 120"
-      # Save code coverage for next job
-      - name: "Make report available"
-        uses: actions/upload-artifact@v2
+      - name: Checkout repository
+        uses: actions/checkout@v3
         with:
-          name: apex-code-coverage
-          path: tests/apex/test-result-codecoverage.json # Wildcards can be used to filter the files copied into the container. See: https://github.com/actions/upload-artifact
-  sonar-scan:
-    needs: deploy-source
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
+          fetch-depth: 0  # Shallow clones should be disabled for better relevancy of analysis
+
+      - name: Set up JDK
+        uses: actions/setup-java@v2
         with:
-          fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of analysis
-      # Download the code coverage report
-      - name: "Download coverage result from previous job"
-        uses: actions/download-artifact@v2
-        with:
-          name: apex-code-coverage
-          path: tests/apex
-      # Use Sonar Cloud action with sonar-project.properties to scan project
-      - name: "Sonar Cloud scan"
+          distribution: 'adopt'
+          java-version: '11'
+
+      - name: Set SONAR_TOKEN environment variable
+        run: echo "SONAR_TOKEN=${{ secrets.SONAR_TOKEN }}" >> $GITHUB_ENV
+
+      - name: Debug print to check if SONAR_TOKEN is set
+        run: echo "SONAR_TOKEN is set to $SONAR_TOKEN"
+
+      - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@master
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Needed to get PR information, if any
+          GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
